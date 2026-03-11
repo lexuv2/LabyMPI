@@ -1,0 +1,1 @@
+/usr/lib64/openmpi/bin/mpirun -np 8 ./mpi 1 1000000 RUN1
