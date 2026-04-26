@@ -34,49 +34,36 @@ int main(int argc, char **argv)
 
   int threadsupport;
   int myrank, nproc;
+// Initialize MPI
+MPI_Init_thread (&argc, &argv, MPI_THREAD_MULTIPLE, &threadsupport);
+if (threadsupport != MPI_THREAD_MULTIPLE)
+{
+printf ("\nThe implementation does not support MPI_THREAD_MULTIPLE, it supports
+level %d\n",
+threadsupport);
+MPI_Finalize();
+exit (-1);
+}
+// find out my rank
+MPI_Comm_rank (MPI_COMM_WORLD, &myrank);
 
-  MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &threadsupport);
-
-  if (threadsupport != MPI_THREAD_MULTIPLE)
-  {
-    printf("\nThe implementation does not support MPI_THREAD_MULTIPLE, it supports level %d\n", threadsupport);
-    MPI_Finalize();
-    return -1;
-  }
-
-  MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 
   parseArgs(&ins__args, &argc, argv);
-  if (ins__args.n_thr <= 0)
-  {
-    if (!myrank)
-      fprintf(stderr, "Number of threads must be greater than 0.\n");
-    MPI_Finalize();
-    return -1;
-  }
-  if (ins__args.stop < ins__args.start)
-  {
-    if (!myrank)
-      fprintf(stderr, "Stop must be greater than or equal to start.\n");
-    MPI_Finalize();
-    return -1;
-  }
-
   omp_set_num_threads(ins__args.n_thr);
 
   if (!myrank)
     gettimeofday(&ins__tstart, NULL);
 
-  const long long total_workers = (long long)nproc * ins__args.n_thr;
-  const long long proc_offset = (long long)myrank * ins__args.n_thr;
+  const long long work = (long long)nproc * ins__args.n_thr;
+  const long long off = (long long)myrank * ins__args.n_thr;
   long long local_count = 0;
 
 #pragma omp parallel reduction(+ : local_count)
   {
     const int tid = omp_get_thread_num();
-    const long long worker_id = proc_offset + tid;
-    for (long long n = ins__args.start + worker_id; n <= ins__args.stop - 2; n += total_workers)
+    const long long worker_id = off + tid;
+    for (long long n = ins__args.start + worker_id; n <= ins__args.stop - 2; n += work)
     {
       if (is_prime(n) && is_prime(n + 2))
       {
@@ -86,6 +73,7 @@ int main(int argc, char **argv)
   }
 
   long long global_count = 0;
+// now merge the numbers to rank 0
   MPI_Reduce(&local_count, &global_count, 1, MPI_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
 
   if (!myrank)
